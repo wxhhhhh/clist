@@ -3,7 +3,6 @@ package clist
 import (
 	"sync"
 	"sync/atomic"
-	"unsafe"
 )
 
 type IntList struct {
@@ -12,80 +11,117 @@ type IntList struct {
 	mu     sync.RWMutex
 }
 
-type intNode struct {
-	value int
-	next  *intNode
-}
-
-func newIntNode(value int) *intNode {
-	return &intNode{value: value}
-}
-
 func NewInt() *IntList {
 	return &IntList{head: newIntNode(0)}
 }
 
-func (l *IntList) Insert(value int) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+func (l *IntList) getHead() *intNode {
+	return l.head
+}
+
+func (l *IntList) findNode(value int) (*intNode, *intNode) {
+
 	a := l.head
-	b := a.next
+	b := a.loadNext()
+
 	for b != nil && b.value < value {
 		a = b
-		b = b.next
+		b = b.loadNext()
 	}
-	// Check if the node is exist.
-	if b != nil && b.value == value {
-		return false
+
+	return a, b
+}
+
+func (l *IntList) Insert(value int) bool {
+
+	for {
+
+		a, b := l.findNode(value)
+
+		if b != nil && b.value == value {
+			return false
+		}
+
+		a.mu.Lock()
+		if a.loadNext() != b {
+			a.mu.Unlock()
+			continue
+		}
+
+		x := newIntNode(value)
+		x.next = b
+
+		a.storeNext(x)
+		a.mu.Unlock()
+
+		atomic.AddInt64(&l.length, 1)
+
+		return true
 	}
-	x := newIntNode(value)
-	x.next = b
-	a.next = x
-	l.length++
-	return true
+
 }
 
 func (l *IntList) Delete(value int) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	a := l.head
-	b := a.next
-	for b != nil && b.value < value {
-		a = b
-		b = b.next
+
+	for {
+
+		a, b := l.findNode(value)
+
+		if b == nil || b.value != value {
+			return false
+		}
+
+		b.mu.Lock()
+		if b.flag.IsMarked() {
+			b.mu.Unlock()
+			continue
+		}
+
+		a.mu.Lock()
+		if a.loadNext() != b || a.flag.IsMarked() {
+			a.mu.Unlock()
+			b.mu.Unlock()
+			continue
+		}
+
+		b.flag.SetMarked()
+		a.storeNext(b.next)
+		a.mu.Unlock()
+		b.mu.Unlock()
+		atomic.AddInt64(&l.length, -1)
+		return true
 	}
-	// Check if b is not exists
-	if b == nil || b.value != value {
-		return false
-	}
-	a.next = b.next
-	l.length--
-	return true
+
 }
 
 func (l *IntList) Contains(value int) bool {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	x := l.head.next
+
+	x := l.head.loadNext()
 	for x != nil && x.value < value {
-		x = x.next
+		x = x.loadNext()
 	}
 	if x == nil {
 		return false
 	}
-	return x.value == value
+	return !x.flag.IsMarked() && x.value == value
+
 }
 
 func (l *IntList) Range(f func(value int) bool) {
-	x := (*intNode)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&l.head.next))))
+	x := l.head.loadNext()
 	for x != nil {
+		if x.flag.IsMarked() {
+			x = x.loadNext()
+			continue
+		}
 		if !f(x.value) {
 			break
 		}
-		x = (*intNode)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&x.next))))
+		x = x.loadNext()
 	}
 }
 
+// Len return the length of list atomically.
 func (l *IntList) Len() int {
-	return int(l.length)
+	return int(atomic.LoadInt64(&l.length))
 }

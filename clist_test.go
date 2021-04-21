@@ -17,7 +17,7 @@ func fastrandn(n uint32) uint32 {
 	return uint32(uint64(fastrand()) * uint64(n) >> 32)
 }
 
-func TestIntSet(t *testing.T) {
+func TestIntClist(t *testing.T) {
 	// Correctness.
 	l := NewInt()
 
@@ -30,6 +30,7 @@ func TestIntSet(t *testing.T) {
 	if l.Delete(0) {
 		t.Fatal("invalid delete")
 	}
+
 	if !l.Insert(0) || l.Len() != 1 {
 		t.Fatal("invalid insert")
 	}
@@ -196,7 +197,7 @@ func TestIntSet(t *testing.T) {
 
 	for i := 0; i < 16; i++ {
 		wg.Add(1)
-		go func(i int) {
+		go func() {
 			x.Range(func(score int) bool {
 				if x.Delete(score) {
 					if !y.Insert(score) {
@@ -206,7 +207,7 @@ func TestIntSet(t *testing.T) {
 				return true
 			})
 			wg.Done()
-		}(i)
+		}()
 	}
 	wg.Wait()
 	if x.Len() != 0 || y.Len() != count {
