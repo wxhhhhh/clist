@@ -17,7 +17,7 @@ func fastrandn(n uint32) uint32 {
 	return uint32(uint64(fastrand()) * uint64(n) >> 32)
 }
 
-func TestIntClist(t *testing.T) {
+func TestIntSet(t *testing.T) {
 	// Correctness.
 	l := NewInt()
 
