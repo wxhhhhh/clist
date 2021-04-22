@@ -40,10 +40,10 @@ func (l *IntList) Insert(value int) bool {
 			return false
 		}
 
-		// 2. lock node a, check whether a.next != b
+		// 2. lock node a, check whether a.next != b or a is marked
 		// if so, unlock node a, continue step1
 		a.mu.Lock()
-		if a.loadNext() != b {
+		if a.loadNext() != b || a.flag.isMarked() {
 			a.mu.Unlock()
 			continue
 		}
