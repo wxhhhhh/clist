@@ -1,24 +1,24 @@
 package clist
 
-import "sync/atomic"
-
-const marked = 1
+import (
+	"sync"
+)
 
 type bitflag struct {
-	data uint32
+	mu     sync.RWMutex
+	marked bool
 }
 
 // setMarked set the node to marked status.
 func (b *bitflag) setMarked() {
-	old := atomic.LoadUint32(&b.data)
-	if old&marked != marked {
-		if atomic.CompareAndSwapUint32(&b.data, old, marked) {
-			return
-		}
-	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.marked = true
 }
 
 // isMarked check the node whether is marked.
 func (b *bitflag) isMarked() bool {
-	return atomic.LoadUint32(&b.data) == marked
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.marked
 }
